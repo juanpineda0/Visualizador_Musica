@@ -8,16 +8,36 @@ uniform float treble;
 uniform vec2 resolution;
 
 // Effect toggles (0.0 = off, 1.0 = on)
-uniform float fx_distortion;
+uniform float fx_zoom;
+uniform float fx_ripple;
+uniform float fx_wave;
+uniform float fx_chromatic;
+uniform float fx_edge_glow;
+
+// Other effects
 uniform float fx_bars;
 uniform float fx_circle;
 uniform float fx_colormask;
+
+// Audio Source Selectors (0=Bass, 1=Mid, 2=Treble)
+uniform int src_zoom;
+uniform int src_ripple;
+uniform int src_wave;
+uniform int src_chromatic;
+uniform int src_edge_glow;
 
 in vec2 v_uv;
 out vec4 f_color;
 
 const float PI = 3.14159265359;
 const float NUM_BINS = 64.0;
+
+// Helper: Get value based on source ID
+float get_source(int id) {
+    if (id == 0) return bass;
+    if (id == 1) return mid;
+    return treble;
+}
 
 // Read a spectrum bin (0-63) from the 1D spectrum texture
 float get_bin(float index) {
@@ -29,30 +49,41 @@ void main() {
     vec2 center = vec2(0.5, 0.5);
     float dist = distance(uv, center);
     
-    // ========== EFFECT 1: IMAGE DISTORTION ==========
-    if (fx_distortion > 0.5) {
-        // Bass: Zoom Pulse
-        float zoom = 1.0 - (bass * 0.04);
+    // ========== DISTORTION EFFECTS ==========
+    
+    // 1. Zoom Pulse
+    if (fx_zoom > 0.5) {
+        float src = get_source(src_zoom);
+        float zoom = 1.0 - (src * 0.04);
         uv = center + (uv - center) * zoom;
-        
-        // Bass: Ripple
+    }
+    
+    // 2. Ripple
+    if (fx_ripple > 0.5) {
+        float src = get_source(src_ripple);
         float ripple = sin(dist * 20.0 - time * 5.0) * 0.5 + 0.5;
-        float ds = bass * 0.035;
+        float ds = src * 0.035;
         vec2 dir = normalize(uv - center + 0.001);
         uv += dir * ripple * ds;
+    }
 
-        // Mid: Wave Warp
-        float wave_x = sin(uv.y * 15.0 + time * 3.0) * mid * 0.03;
-        float wave_y = cos(uv.x * 12.0 + time * 2.5) * mid * 0.02;
+    // 3. Wave Warp
+    if (fx_wave > 0.5) {
+        float src = get_source(src_wave);
+        float wave_x = sin(uv.y * 15.0 + time * 3.0) * src * 0.03;
+        float wave_y = cos(uv.x * 12.0 + time * 2.5) * src * 0.02;
         uv += vec2(wave_x, wave_y);
     }
 
-    // Sample background
-    float shift = treble * 0.02 + bass * 0.005;
+    // Sample background (with Chromatic Aberration if enabled)
     float r, g, b;
+    bool chromatic_active = (fx_chromatic > 0.5);
     
-    if (fx_distortion > 0.5 && shift > 0.001) {
-        // Chromatic aberration
+    if (chromatic_active) {
+        float src = get_source(src_chromatic);
+        // Shift depends on intensity
+        float shift = src * 0.02 + 0.002; 
+        
         r = texture(tex, uv + vec2(shift, shift * 0.5)).r;
         g = texture(tex, uv).g;
         b = texture(tex, uv - vec2(shift, shift * 0.5)).b;
@@ -62,15 +93,22 @@ void main() {
     }
     vec3 color = vec3(r, g, b);
 
-    // Edge glow (distortion mode)
-    if (fx_distortion > 0.5) {
-        vec2 px = vec2(1.0) / resolution;
-        vec3 left_c  = texture(tex, uv - vec2(px.x, 0.0)).rgb;
-        vec3 right_c = texture(tex, uv + vec2(px.x, 0.0)).rgb;
-        vec3 up_c    = texture(tex, uv - vec2(0.0, px.y)).rgb;
-        vec3 down_c  = texture(tex, uv + vec2(0.0, px.y)).rgb;
-        float edge = length(right_c - left_c) + length(down_c - up_c);
-        color += edge * treble * vec3(0.4, 0.6, 1.0) * 1.5;
+    // 4. Edge Glow
+    if (fx_edge_glow > 0.5) {
+        float src = get_source(src_edge_glow);
+        if (src > 0.05) {
+            vec2 px = vec2(1.0) / resolution;
+            vec3 left_c  = texture(tex, uv - vec2(px.x, 0.0)).rgb;
+            vec3 right_c = texture(tex, uv + vec2(px.x, 0.0)).rgb;
+            vec3 up_c    = texture(tex, uv - vec2(0.0, px.y)).rgb;
+            vec3 down_c  = texture(tex, uv + vec2(0.0, px.y)).rgb;
+            
+            float edge = length(right_c - left_c) + length(down_c - up_c);
+            
+            // Color based on source (Bass=Reddish, Mid=Greenish, Treble=Blueish) logic could be added
+            // For now, keep it blue-ish
+            color += edge * src * vec3(0.4, 0.6, 1.0) * 1.5;
+        }
     }
 
     // Vignette
@@ -78,7 +116,7 @@ void main() {
     color *= mix(0.7, 1.0, vignette);
     color += vec3(bass * 0.08);
 
-    // ========== EFFECT 2: FREQUENCY BARS ==========
+    // ========== FREQUENCY BARS ==========
     if (fx_bars > 0.5) {
         float bar_region_h = 0.35;  // Bars occupy bottom 35%
         float bar_y_start = 1.0 - bar_region_h;
@@ -97,7 +135,7 @@ void main() {
             
             if (bin_frac > (1.0 - bar_width) * 0.5 && bin_frac < 1.0 - (1.0 - bar_width) * 0.5) {
                 if (bar_height_y < amp) {
-                    // Color gradient: blue at bottom → cyan → magenta at top
+                    // Color gradient: blue at bottom -> cyan -> magenta at top
                     float t = bar_height_y / max(amp, 0.01);
                     vec3 bar_color = mix(
                         vec3(0.1, 0.4, 1.0),   // Blue base
@@ -117,7 +155,7 @@ void main() {
         }
     }
 
-    // ========== EFFECT 3: CIRCULAR VISUALIZER ==========
+    // ========== CIRCULAR VISUALIZER ==========
     if (fx_circle > 0.5) {
         vec2 aspect_uv = vec2(v_uv.x, v_uv.y * resolution.y / resolution.x);
         vec2 aspect_center = vec2(0.5, 0.5 * resolution.y / resolution.x);
@@ -143,7 +181,7 @@ void main() {
         if (c_dist > inner_r && c_dist < outer_r && bar_active > 0.5) {
             float t = (c_dist - inner_r) / max(outer_r - inner_r, 0.001);
             
-            // Color: cyan center → purple outside
+            // Color: cyan center -> purple outside
             vec3 ring_color = mix(
                 vec3(0.0, 0.9, 1.0),   // Cyan
                 vec3(0.8, 0.2, 1.0),   // Purple
@@ -167,7 +205,7 @@ void main() {
         color += vec3(0.2, 0.5, 0.8) * ring_line * 0.5;
     }
 
-    // ========== EFFECT 4: COLOR MASK BARS ==========
+    // ========== COLOR MASK BARS ==========
     if (fx_colormask > 0.5) {
         // Save original color
         vec3 original_color = color;

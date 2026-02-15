@@ -9,15 +9,27 @@ class Menu:
         self.visible = False
         self.selected = 0
         
-        # Menu items: sliders and toggles
+        # Menu items: sliders and toggles and selectors
         self.items = [
-            # --- Effect Toggles ---
-            {"label": "Distorsión Imagen", "key": "fx_distortion", "type": "toggle", "value": 1.0},
+            # --- Effect Toggles & Sources ---
+            # Format: {label, key, type, value, [src_key, src_value]}
+            # src_value: 0=Bass, 1=Mid, 2=Treble
+            
+            {"label": "Zoom Pulse",       "key": "fx_zoom",       "type": "effect_row", "value": 1.0, "src_key": "src_zoom",      "src_value": 0},
+            {"label": "Ripple",           "key": "fx_ripple",     "type": "effect_row", "value": 0.0, "src_key": "src_ripple",    "src_value": 0},
+            {"label": "Wave Warp",        "key": "fx_wave",       "type": "effect_row", "value": 1.0, "src_key": "src_wave",      "src_value": 1},
+            {"label": "Aberración Crom.", "key": "fx_chromatic",  "type": "effect_row", "value": 1.0, "src_key": "src_chromatic", "src_value": 2},
+            {"label": "Brillo Bordes",    "key": "fx_edge_glow",  "type": "effect_row", "value": 0.0, "src_key": "src_edge_glow", "src_value": 2},
+            
+            {"label": "", "key": "_sep0", "type": "separator"},
+            
             {"label": "Barras Frecuencia", "key": "fx_bars",       "type": "toggle", "value": 0.0},
             {"label": "Círculo Espectral", "key": "fx_circle",     "type": "toggle", "value": 0.0},
             {"label": "Máscara de Color",  "key": "fx_colormask",  "type": "toggle", "value": 0.0},
+            
             # --- Separator ---
             {"label": "", "key": "_sep1", "type": "separator"},
+            
             # --- Intensity Sliders ---
             {"label": "Intensidad Bass",   "key": "bass_intensity",   "type": "slider", "min": 0.0, "max": 2.0, "step": 0.1, "value": 1.0},
             {"label": "Intensidad Mid",    "key": "mid_intensity",    "type": "slider", "min": 0.0, "max": 2.0, "step": 0.1, "value": 1.0},
@@ -30,18 +42,30 @@ class Menu:
         self.font_title = pygame.font.SysFont("Segoe UI", 22, bold=True)
         self.font_item = pygame.font.SysFont("Segoe UI", 17)
         self.font_hint = pygame.font.SysFont("Segoe UI", 13)
+        self.font_small = pygame.font.SysFont("Segoe UI", 12, bold=True)
         
         # Colors
-        self.bg_color = (12, 12, 22, 210)
+        self.bg_color = (12, 12, 22, 230)
         self.title_color = (180, 140, 255)
         self.text_color = (200, 200, 220)
         self.selected_color = (100, 220, 255)
         self.hover_color = (80, 180, 220)
+        
         self.bar_bg = (40, 40, 60)
         self.bar_fill = (80, 160, 255)
         self.bar_fill_selected = (100, 220, 255)
+        
         self.toggle_on = (80, 220, 140)
         self.toggle_off = (120, 60, 60)
+        
+        # Source colors: Bass=Red, Mid=Green, Treble=Blue
+        self.src_colors = [
+            (255, 80, 80),   # Bass
+            (80, 255, 100),  # Mid
+            (80, 160, 255)   # Treble
+        ]
+        self.src_labels = ["BASS", "MID", "TREB"]
+        
         self.hint_color = (110, 110, 140)
         self.separator_color = (60, 50, 100, 120)
         
@@ -50,6 +74,7 @@ class Menu:
         self._item_rects = []  # [(index, pygame.Rect, type)]
         self._slider_bar_rects = {}  # {index: pygame.Rect}
         self._toggle_rects = {}  # {index: pygame.Rect}
+        self._src_rects = {} # {index: pygame.Rect}
         
         # Mouse state
         self.hovered = -1
@@ -61,9 +86,13 @@ class Menu:
     
     def get_value(self, key):
         for item in self.items:
+            # Check main key
             if item["key"] == key:
                 return item["value"]
-        return 1.0
+            # Check source key if it exists
+            if "src_key" in item and item["src_key"] == key:
+                return item["src_value"]
+        return 1.0  # Default fallback
     
     def _get_selectable_items(self):
         return [i for i, item in enumerate(self.items) if item["type"] != "separator"]
@@ -81,7 +110,11 @@ class Menu:
         # --- Keyboard ---
         if event.type == pygame.KEYDOWN:
             selectable = self._get_selectable_items()
-            current_sel_idx = selectable.index(self.selected) if self.selected in selectable else 0
+            if not selectable: return False
+            
+            current_sel_idx = 0
+            if self.selected in selectable:
+                current_sel_idx = selectable.index(self.selected)
             
             if event.key == pygame.K_UP:
                 current_sel_idx = (current_sel_idx - 1) % len(selectable)
@@ -93,15 +126,22 @@ class Menu:
                 return True
             elif event.key in (pygame.K_LEFT, pygame.K_RIGHT):
                 item = self.items[self.selected]
-                if item["type"] == "toggle":
+                if item["type"] in ("toggle", "effect_row"):
+                    # Toggle value
                     item["value"] = 0.0 if item["value"] > 0.5 else 1.0
                 elif item["type"] == "slider":
                     delta = item["step"] if event.key == pygame.K_RIGHT else -item["step"]
                     item["value"] = max(item["min"], min(item["max"], round(item["value"] + delta, 2)))
                 return True
+            elif event.key == pygame.K_s:
+                # Cycle source if available on selected item
+                item = self.items[self.selected]
+                if item["type"] == "effect_row":
+                    item["src_value"] = (item["src_value"] + 1) % 3
+                return True
             elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
                 item = self.items[self.selected]
-                if item["type"] == "toggle":
+                if item["type"] in ("toggle", "effect_row"):
                     item["value"] = 0.0 if item["value"] > 0.5 else 1.0
                 return True
         
@@ -109,6 +149,9 @@ class Menu:
         if event.type == pygame.MOUSEMOTION:
             mx, my = event.pos
             self.hovered = -1
+            
+            # Check interaction zones first (sliders/buttons)
+            # But here we just check generic item rects for hover highlight
             for idx, rect, itype in self._item_rects:
                 if rect.collidepoint(mx, my):
                     self.hovered = idx
@@ -122,23 +165,41 @@ class Menu:
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             mx, my = event.pos
             
-            # Check if click is on the panel at all
             if self._panel_rect and not self._panel_rect.collidepoint(mx, my):
-                return False  # Click outside panel, don't consume
+                return False
             
-            for idx, rect, itype in self._item_rects:
+            # Check specific controls first (Toggle switches vs Source buttons vs Sliders)
+            
+            # 1. Source Buttons
+            for idx, rect in self._src_rects.items():
                 if rect.collidepoint(mx, my):
                     self.selected = idx
                     item = self.items[idx]
-                    
-                    if item["type"] == "toggle":
-                        # Click toggle
-                        item["value"] = 0.0 if item["value"] > 0.5 else 1.0
-                    elif item["type"] == "slider":
-                        # Start dragging or click-set
-                        self.dragging_slider = idx
-                        self._set_slider_from_mouse(idx, mx)
+                    item["src_value"] = (item["src_value"] + 1) % 3
                     return True
+            
+            # 2. Toggle Switches
+            for idx, rect in self._toggle_rects.items():
+                if rect.collidepoint(mx, my):
+                    self.selected = idx
+                    item = self.items[idx]
+                    item["value"] = 0.0 if item["value"] > 0.5 else 1.0
+                    return True
+
+            # 3. Sliders
+            for idx, rect in self._slider_bar_rects.items():
+                if rect.collidepoint(mx, my):
+                    self.selected = idx
+                    self.dragging_slider = idx
+                    self._set_slider_from_mouse(idx, mx)
+                    return True
+
+            # 4. General Item Click (selects item, maybe toggles if simple check)
+            for idx, rect, itype in self._item_rects:
+                if rect.collidepoint(mx, my):
+                    self.selected = idx
+                    return True
+            
             return True
         
         if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
@@ -166,8 +227,8 @@ class Menu:
     
     def render_surface(self, screen_w, screen_h):
         """Render menu to a Pygame RGBA surface."""
-        panel_w = min(460, screen_w - 40)
-        panel_h = min(450, screen_h - 40)
+        panel_w = min(500, screen_w - 40)
+        panel_h = min(580, screen_h - 40)
         pad = 20
         
         surface = pygame.Surface((screen_w, screen_h), pygame.SRCALPHA)
@@ -179,13 +240,14 @@ class Menu:
         self._item_rects = []
         self._slider_bar_rects = {}
         self._toggle_rects = {}
+        self._src_rects = {}
         
         # Background
         pygame.draw.rect(surface, self.bg_color, self._panel_rect, border_radius=14)
         pygame.draw.rect(surface, (100, 80, 180, 100), self._panel_rect, 2, border_radius=14)
         
         # Title
-        title = self.font_title.render("⚙  OPCIONES", True, self.title_color)
+        title = self.font_title.render("⚙  EFECTOS & AJUSTES", True, self.title_color)
         surface.blit(title, (px + (panel_w - title.get_width()) // 2, py + pad))
         
         # Separator
@@ -194,8 +256,7 @@ class Menu:
         
         # Items
         item_y = sep_y + 12
-        bar_w = panel_w - pad * 2 - 220
-        bar_h = 12
+        bar_w = panel_w - pad * 2 - 200 # Slider width
         item_h = 32
         
         for i, item in enumerate(self.items):
@@ -208,7 +269,7 @@ class Menu:
             is_selected = (i == self.selected)
             is_hovered = (i == self.hovered)
             
-            # Store item rect for mouse hit testing
+            # Store full row rect
             full_rect = pygame.Rect(px + 4, item_y - 2, panel_w - 8, item_h)
             self._item_rects.append((i, full_rect, item["type"]))
             
@@ -222,7 +283,7 @@ class Menu:
             
             # Highlight background
             if is_selected or is_hovered:
-                bg_alpha = 80 if is_selected else 40
+                bg_alpha = 70 if is_selected else 30
                 pygame.draw.rect(surface, (40, 60, 100, bg_alpha), full_rect, border_radius=6)
             
             # Selection indicator
@@ -234,29 +295,50 @@ class Menu:
             label = self.font_item.render(item["label"], True, color)
             surface.blit(label, (px + pad + 14, item_y))
             
-            if item["type"] == "toggle":
-                # Toggle switch
-                tog_x = px + panel_w - pad - 70
-                tog_w, tog_h = 50, 22
+            # --- Type Specific Rendering ---
+            
+            if item["type"] in ("toggle", "effect_row"):
+                # Toggle Switch (Right aligned)
+                tog_x = px + panel_w - pad - 50
+                tog_w, tog_h = 40, 20
                 is_on = item["value"] > 0.5
                 tog_color = self.toggle_on if is_on else self.toggle_off
-                tog_rect = pygame.Rect(tog_x, item_y + 3, tog_w, tog_h)
-                pygame.draw.rect(surface, tog_color, tog_rect, border_radius=11)
+                
+                tog_rect = pygame.Rect(tog_x, item_y + 5, tog_w, tog_h)
+                pygame.draw.rect(surface, tog_color, tog_rect, border_radius=10)
                 self._toggle_rects[i] = tog_rect
                 
                 # Knob
-                knob_x = tog_x + tog_w - 18 if is_on else tog_x + 4
-                knob_rect = pygame.Rect(knob_x, item_y + 6, 14, 16)
-                pygame.draw.rect(surface, (255, 255, 255, 220), knob_rect, border_radius=8)
+                knob_x = tog_x + tog_w - 18 if is_on else tog_x + 2
+                knob_rect = pygame.Rect(knob_x, item_y + 7, 16, 16)
+                pygame.draw.rect(surface, (255, 255, 255, 230), knob_rect, border_radius=8)
                 
-                # ON/OFF
-                state_text = self.font_hint.render("ON" if is_on else "OFF", True, (255, 255, 255) if is_on else (180, 120, 120))
-                surface.blit(state_text, (tog_x + tog_w + 6, item_y + 5))
-                
+                # If it's an "effect_row", it also has a Source Selector button
+                if item["type"] == "effect_row":
+                    src_val = item["src_value"]
+                    src_color = self.src_colors[src_val]
+                    src_label = self.src_labels[src_val]
+                    
+                    # Button Rect
+                    btn_w = 40
+                    btn_h = 20
+                    btn_x = tog_x - btn_w - 20
+                    btn_rect = pygame.Rect(btn_x, item_y + 5, btn_w, btn_h)
+                    self._src_rects[i] = btn_rect
+                    
+                    # Draw Button
+                    pygame.draw.rect(surface, src_color, btn_rect, border_radius=4)
+                    
+                    # Text
+                    txt_surf = self.font_small.render(src_label, True, (20, 20, 30))
+                    txt_x = btn_x + (btn_w - txt_surf.get_width()) // 2
+                    txt_y = btn_y = item_y + 5 + (btn_h - txt_surf.get_height()) // 2
+                    surface.blit(txt_surf, (txt_x, txt_y))
+
             elif item["type"] == "slider":
                 # Slider bar
-                bar_x = px + pad + 200
-                bar_rect = pygame.Rect(bar_x, item_y + 8, bar_w, bar_h)
+                bar_x = px + pad + 180
+                bar_rect = pygame.Rect(bar_x, item_y + 8, bar_w, 12)
                 pygame.draw.rect(surface, self.bar_bg, bar_rect, border_radius=4)
                 self._slider_bar_rects[i] = bar_rect
                 
@@ -264,32 +346,32 @@ class Menu:
                 fill_w = int(bar_w * pct)
                 if fill_w > 0:
                     fill_color = self.bar_fill_selected if is_selected else self.bar_fill
-                    fill_rect = pygame.Rect(bar_x, item_y + 8, fill_w, bar_h)
+                    fill_rect = pygame.Rect(bar_x, item_y + 8, fill_w, 12)
                     pygame.draw.rect(surface, fill_color, fill_rect, border_radius=4)
                 
-                # Knob circle on slider
+                # Knob
                 knob_cx = bar_x + fill_w
-                knob_cy = item_y + 8 + bar_h // 2
+                knob_cy = item_y + 8 + 6
                 pygame.draw.circle(surface, (220, 220, 255), (knob_cx, knob_cy), 8)
-                pygame.draw.circle(surface, (100, 150, 255), (knob_cx, knob_cy), 6)
                 
                 # Percentage
-                pct_text = self.font_hint.render(f"{int(item['value'] * 100)}%", True, color)
+                val_text = f"{int(item['value'] * 100)}%" if item["key"] != "sensitivity" else f"{item['value']}x"
+                pct_text = self.font_hint.render(val_text, True, color)
                 surface.blit(pct_text, (bar_x + bar_w + 12, item_y + 5))
             
             item_y += item_h + 4
         
         # Hints at bottom
-        hint_y = py + panel_h - 42
+        hint_y = py + panel_h - 44
         pygame.draw.line(surface, (80, 60, 140, 120), (px + pad, hint_y - 8), (px + panel_w - pad, hint_y - 8), 1)
         
         hints = [
-            "[TAB] Cerrar  [↑↓] Navegar  [←→] Ajustar  🖱 Click/Drag",
-            "[F] Fullscreen  [B] Borderless  [ESC] Salir"
+            "[Click/S] Cambiar Fuente (Bass/Mid/Treb)",
+            "[F] Pantalla Comp.  [B] Sin bordes"
         ]
         for hint_text in hints:
             hint = self.font_hint.render(hint_text, True, self.hint_color)
             surface.blit(hint, (px + (panel_w - hint.get_width()) // 2, hint_y))
-            hint_y += 16
+            hint_y += 18
         
         return surface

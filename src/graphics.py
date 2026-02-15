@@ -258,10 +258,22 @@ class GraphicsEngine:
             self.prog['spectrum_tex'].value = 1
             
             # Effect toggles from menu
-            self.prog['fx_distortion'].value = 1.0 if self.menu.get_value("fx_distortion") > 0.5 else 0.0
+            self.prog['fx_zoom'].value = 1.0 if self.menu.get_value("fx_zoom") > 0.5 else 0.0
+            self.prog['fx_ripple'].value = 1.0 if self.menu.get_value("fx_ripple") > 0.5 else 0.0
+            self.prog['fx_wave'].value = 1.0 if self.menu.get_value("fx_wave") > 0.5 else 0.0
+            self.prog['fx_chromatic'].value = 1.0 if self.menu.get_value("fx_chromatic") > 0.5 else 0.0
+            self.prog['fx_edge_glow'].value = 1.0 if self.menu.get_value("fx_edge_glow") > 0.5 else 0.0
+            
             self.prog['fx_bars'].value = 1.0 if self.menu.get_value("fx_bars") > 0.5 else 0.0
             self.prog['fx_circle'].value = 1.0 if self.menu.get_value("fx_circle") > 0.5 else 0.0
             self.prog['fx_colormask'].value = 1.0 if self.menu.get_value("fx_colormask") > 0.5 else 0.0
+            
+            # Source Selectors
+            self.prog['src_zoom'].value = int(self.menu.get_value("src_zoom"))
+            self.prog['src_ripple'].value = int(self.menu.get_value("src_ripple"))
+            self.prog['src_wave'].value = int(self.menu.get_value("src_wave"))
+            self.prog['src_chromatic'].value = int(self.menu.get_value("src_chromatic"))
+            self.prog['src_edge_glow'].value = int(self.menu.get_value("src_edge_glow"))
         except Exception:
             pass
 
