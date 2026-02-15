@@ -14,6 +14,11 @@ class GraphicsEngine:
         # Pygame Setup (only display, not mixer - avoids WASAPI conflicts)
         pygame.display.init()
         pygame.font.init()
+
+        # Save native screen resolution
+        _info = pygame.display.Info()
+        self.screen_w = _info.current_w
+        self.screen_h = _info.current_h
         
         # Window state
         self.borderless = False
@@ -146,18 +151,48 @@ class GraphicsEngine:
             pygame.draw.line(surface, color, (0, y), (w, y), 1)
         return surface
 
+    def _set_window_pos(self, x, y):
+        """Force window position using Windows API."""
+        try:
+            import ctypes
+            hwnd = pygame.display.get_wm_info()['window']
+            
+            # HWND_TOP = 0
+            # SWP_NOSIZE = 0x0001
+            # SWP_NOZORDER = 0x0004
+            # SWP_SHOWWINDOW = 0x0040
+            
+            ctypes.windll.user32.SetWindowPos(
+                hwnd, 0, x, y, 0, 0, 0x0001 | 0x0004 | 0x0040
+            )
+        except Exception as e:
+            print(f"SetWindowPos failed: {e}")
+
     def _toggle_fullscreen(self):
         self.fullscreen = not self.fullscreen
+        import os
+        
         if self.fullscreen:
-            pygame.display.set_mode((0, 0), pygame.OPENGL | pygame.DOUBLEBUF | pygame.FULLSCREEN)
-            info = pygame.display.Info()
-            self.width, self.height = info.current_w, info.current_h
+            # Borderless Windowed Fullscreen
+            # os.environ['SDL_VIDEO_WINDOW_POS'] = '0,0' # Not reliable dynamically
+            self.width, self.height = self.screen_w, self.screen_h
+            flags = pygame.OPENGL | pygame.DOUBLEBUF | pygame.NOFRAME
+            pygame.display.set_mode((self.width, self.height), flags)
+            
+            # Force move to 0,0
+            self._set_window_pos(0, 0)
         else:
+            # Restore windowed mode
+            # os.environ['SDL_VIDEO_WINDOW_POS'] = ''
+            # os.environ.pop('SDL_VIDEO_WINDOW_POS', None)
             self.width, self.height = 1280, 720
             flags = pygame.OPENGL | pygame.DOUBLEBUF | pygame.RESIZABLE
             if self.borderless:
                 flags |= pygame.NOFRAME
             pygame.display.set_mode((self.width, self.height), flags)
+            
+            # Recenter (optional, or let OS decide)
+            # self._set_window_pos(100, 100)
         
         self.ctx.viewport = (0, 0, self.width, self.height)
         if self.original_surface:
