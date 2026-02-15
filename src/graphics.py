@@ -65,7 +65,6 @@ class GraphicsEngine:
         self.texture = None
         self.overlay_texture = None
         self.original_surface = None
-        self.load_default_texture()
         
         # Spectrum texture (64x1, single RED channel, float32)
         self.spectrum_texture = self.ctx.texture((64, 1), 1, dtype='f4')
@@ -73,6 +72,47 @@ class GraphicsEngine:
         
         # Menu
         self.menu = Menu()
+        
+        # Load images and connect menu
+        self._image_list = []  # sorted list of Path objects
+        self._scan_and_load_images()
+        self.menu.set_on_image_change(self._load_image_by_path)
+
+    def _scan_and_load_images(self):
+        """Scan assets/ for images, populate menu, and load the first one."""
+        assets_path = self.base_path / 'assets'
+        valid_extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.webp']
+        
+        self._image_list = []
+        if assets_path.exists():
+            for file_path in sorted(assets_path.iterdir()):
+                if file_path.suffix.lower() in valid_extensions:
+                    self._image_list.append(file_path)
+        
+        # Tell the menu about the image list
+        self.menu.set_image_list(self._image_list, current_index=0)
+        
+        if self._image_list:
+            self._load_image_by_path(self._image_list[0])
+        else:
+            # No images found: use fallback grid
+            self.original_surface = self._create_fallback_surface()
+            iw, ih = self.original_surface.get_size()
+            print(f"No images found. Using fallback {iw}x{ih}")
+            self._upload_texture_cover(self.original_surface)
+
+    def _load_image_by_path(self, path):
+        """Load a single image by its Path and upload it as the background texture."""
+        try:
+            print(f"Loading background: {path.name}")
+            self.original_surface = pygame.image.load(str(path)).convert_alpha()
+            iw, ih = self.original_surface.get_size()
+            print(f"Image size: {iw}x{ih}")
+            self._upload_texture_cover(self.original_surface)
+        except Exception as e:
+            print(f"Error loading image '{path.name}': {e}")
+            self.original_surface = self._create_fallback_surface()
+            self._upload_texture_cover(self.original_surface)
 
     def _load_shader(self, vert_name, frag_name):
         vert_path = self.base_path / 'shaders' / vert_name
@@ -85,29 +125,8 @@ class GraphicsEngine:
         return self.ctx.program(vertex_shader=vert_src, fragment_shader=frag_src)
 
     def load_default_texture(self):
-        assets_path = self.base_path / 'assets'
-        valid_extensions = ['.jpg', '.jpeg', '.png', '.bmp']
-        
-        bg_path = None
-        if assets_path.exists():
-            for file_path in assets_path.iterdir():
-                if file_path.suffix.lower() in valid_extensions:
-                    bg_path = file_path
-                    break
-        
-        if bg_path:
-            try:
-                print(f"Loading background: {bg_path.name}")
-                self.original_surface = pygame.image.load(str(bg_path)).convert_alpha()
-            except Exception as e:
-                print(f"Error loading image: {e}")
-                self.original_surface = self._create_fallback_surface()
-        else:
-            self.original_surface = self._create_fallback_surface()
-        
-        iw, ih = self.original_surface.get_size()
-        print(f"Image size: {iw}x{ih}")
-        self._upload_texture_cover(self.original_surface)
+        """Legacy method — now just calls _scan_and_load_images."""
+        self._scan_and_load_images()
     
     def _upload_texture_cover(self, surface):
         """Crop and scale image to fill window exactly (cover mode)."""
@@ -263,6 +282,7 @@ class GraphicsEngine:
             self.prog['fx_wave'].value = 1.0 if self.menu.get_value("fx_wave") > 0.5 else 0.0
             self.prog['fx_chromatic'].value = 1.0 if self.menu.get_value("fx_chromatic") > 0.5 else 0.0
             self.prog['fx_edge_glow'].value = 1.0 if self.menu.get_value("fx_edge_glow") > 0.5 else 0.0
+            self.prog['fx_destellos'].value = 1.0 if self.menu.get_value("fx_destellos") > 0.5 else 0.0
             
             self.prog['fx_bars'].value = 1.0 if self.menu.get_value("fx_bars") > 0.5 else 0.0
             self.prog['fx_circle'].value = 1.0 if self.menu.get_value("fx_circle") > 0.5 else 0.0
@@ -274,6 +294,7 @@ class GraphicsEngine:
             self.prog['src_wave'].value = int(self.menu.get_value("src_wave"))
             self.prog['src_chromatic'].value = int(self.menu.get_value("src_chromatic"))
             self.prog['src_edge_glow'].value = int(self.menu.get_value("src_edge_glow"))
+            self.prog['src_destellos'].value = int(self.menu.get_value("src_destellos"))
         except Exception:
             pass
 

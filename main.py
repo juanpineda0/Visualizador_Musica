@@ -1,5 +1,4 @@
 import sys
-import threading
 import pygame
 from src.audio import AudioAnalyzer
 from src.graphics import GraphicsEngine

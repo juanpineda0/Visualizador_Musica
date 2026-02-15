@@ -18,6 +18,7 @@ uniform float fx_edge_glow;
 uniform float fx_bars;
 uniform float fx_circle;
 uniform float fx_colormask;
+uniform float fx_destellos;  // Audio-reactive glow ("destellos")
 
 // Audio Source Selectors (0=Bass, 1=Mid, 2=Treble)
 uniform int src_zoom;
@@ -25,6 +26,7 @@ uniform int src_ripple;
 uniform int src_wave;
 uniform int src_chromatic;
 uniform int src_edge_glow;
+uniform int src_destellos;
 
 in vec2 v_uv;
 out vec4 f_color;
@@ -111,10 +113,15 @@ void main() {
         }
     }
 
-    // Vignette
-    float vignette = 1.0 - smoothstep(0.3, 1.2, dist);
-    color *= mix(0.7, 1.0, vignette);
-    color += vec3(bass * 0.08);
+    // Vignette (always on — basic darkening at edges)
+    float vig_raw = 1.0 - smoothstep(0.3, 1.2, dist);
+    color *= mix(0.7, 1.0, vig_raw);
+
+    // Destellos (audio-reactive glow)
+    if (fx_destellos > 0.5) {
+        float src = get_source(src_destellos);
+        color += vec3(src * 0.08);
+    }
 
     // ========== FREQUENCY BARS ==========
     if (fx_bars > 0.5) {
