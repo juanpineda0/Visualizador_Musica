@@ -46,3 +46,7 @@ logs/
 .system_generated/
 context/
 brain/
+
+# Assets (ignored due to licensing)
+assets/*
+!assets/.gitkeep
